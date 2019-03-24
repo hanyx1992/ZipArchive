@@ -670,15 +670,7 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
 
 + (BOOL)createZipFileAtPath:(NSString *)path withFilesAtPaths:(NSArray<NSString *> *)paths withPassword:(NSString *)password
 {
-    SSZipArchive *zipArchive = [[SSZipArchive alloc] initWithPath:path];
-    BOOL success = [zipArchive open];
-    if (success) {
-        for (NSString *filePath in paths) {
-            success &= [zipArchive writeFile:filePath withPassword:password];
-        }
-        success &= [zipArchive close];
-    }
-    return success;
+    return [self createZipFileAtPath:path withContents:paths keepParentDirectory:NO compressionLevel:Z_DEFAULT_COMPRESSION password:password AES:YES progressHandler:nil];
 }
 
 + (BOOL)createZipFileAtPath:(NSString *)path withContentsOfDirectory:(NSString *)directoryPath withPassword:(nullable NSString *)password {
@@ -710,46 +702,97 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
                    password:(nullable NSString *)password
                         AES:(BOOL)aes
             progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
-    
-    SSZipArchive *zipArchive = [[SSZipArchive alloc] initWithPath:path];
-    BOOL success = [zipArchive open];
-    if (success) {
-        // use a local fileManager (queue/thread compatibility)
-        NSFileManager *fileManager = [[NSFileManager alloc] init];
-        NSDirectoryEnumerator *dirEnumerator = [fileManager enumeratorAtPath:directoryPath];
-        NSArray<NSString *> *allObjects = dirEnumerator.allObjects;
-        NSUInteger total = allObjects.count, complete = 0;
-        if (keepParentDirectory && !total) {
-            allObjects = @[@""];
-            total = 1;
-        }
-        for (__strong NSString *fileName in allObjects) {
-            NSString *fullFilePath = [directoryPath stringByAppendingPathComponent:fileName];
-            
-            if (keepParentDirectory) {
-                fileName = [directoryPath.lastPathComponent stringByAppendingPathComponent:fileName];
-            }
-            
-            BOOL isDir;
-            [fileManager fileExistsAtPath:fullFilePath isDirectory:&isDir];
-            if (!isDir) {
-                // file
-                success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
-            } else {
-                // directory
-                if (![fileManager enumeratorAtPath:fullFilePath].nextObject) {
-                    // empty directory
-                    success &= [zipArchive writeFolderAtPath:fullFilePath withFolderName:fileName withPassword:password];
-                }
-            }
-            if (progressHandler) {
-                complete++;
-                progressHandler(complete, total);
-            }
-        }
-        success &= [zipArchive close];
-    }
-    return success;
+	return [self createZipFileAtPath:path withContents:@[directoryPath] keepParentDirectory:keepParentDirectory compressionLevel:compressionLevel password:password AES:aes progressHandler:progressHandler];
+}
+
++ (BOOL)createZipFileAtPath:(NSString *)path
+			   withContents:(NSArray<NSString *> *)contents
+			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
+	return [self createZipFileAtPath:path withContents:contents keepParentDirectory:YES compressionLevel:Z_DEFAULT_COMPRESSION password:nil AES:YES progressHandler:progressHandler];
+}
+
++ (BOOL)createZipFileAtPath:(NSString *)path
+			   withContents:(NSArray<NSString *> *)contents
+		keepParentDirectory:(BOOL)keepParentDirectory
+		   compressionLevel:(int)compressionLevel
+				   password:(nullable NSString *)password
+						AES:(BOOL)aes
+			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
+	
+	SSZipArchive *zipArchive = [[SSZipArchive alloc] initWithPath:path];
+	__block BOOL success = [zipArchive open];
+	if (!success) {
+		return success;
+	}
+	
+	// use a local fileManager (queue/thread compatibility)
+	NSFileManager *fileManager = [[NSFileManager alloc] init];
+	__block NSUInteger total = 0, complete = 0;
+
+	NSMutableDictionary<NSString *, NSArray<NSString *> *> *dirObjects =
+	[NSMutableDictionary dictionaryWithCapacity:contents.count];
+	NSMutableArray *allFiles = [NSMutableArray array];
+	
+	// calculate total count
+	[contents enumerateObjectsUsingBlock:^(NSString *content, NSUInteger idx, BOOL *stop) {
+		BOOL isDir;
+		[fileManager fileExistsAtPath:content isDirectory:&isDir];
+		if (isDir) {
+			NSDirectoryEnumerator *dirEnumerator = [fileManager enumeratorAtPath:content];
+			NSArray<NSString *> *allObjects = dirEnumerator.allObjects;
+			if (keepParentDirectory && allObjects.count == 0) {
+				allObjects = @[@""];
+			}
+			total += allObjects.count;
+			[dirObjects setObject:allObjects forKey:content];
+		} else {
+			total++;
+			[allFiles addObject:content];
+		}
+	}];
+	
+	// zip all files
+	[allFiles enumerateObjectsUsingBlock:^(NSString *fullFilePath, NSUInteger idx, BOOL *stop) {
+		NSString *fileName = fullFilePath.lastPathComponent;
+		success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
+		if (progressHandler) {
+			complete++;
+			progressHandler(complete, total);
+		}
+	}];
+	
+	// zip all dirs
+	for (NSString *directoryPath in dirObjects.allKeys) {
+		NSArray<NSString *> *allObjects = dirObjects[directoryPath];
+		[allObjects enumerateObjectsUsingBlock:^(NSString *fileName, NSUInteger idx, BOOL *stop) {
+			
+			NSString *fullFilePath = [directoryPath stringByAppendingPathComponent:fileName];
+			
+			if (keepParentDirectory) {
+				fileName = [directoryPath.lastPathComponent stringByAppendingPathComponent:fileName];
+			}
+			
+			BOOL isDir;
+			[fileManager fileExistsAtPath:fullFilePath isDirectory:&isDir];
+			if (!isDir) {
+				// file
+				success &= [zipArchive writeFileAtPath:fullFilePath withFileName:fileName compressionLevel:compressionLevel password:password AES:aes];
+			} else {
+				// directory
+				if (![fileManager enumeratorAtPath:fullFilePath].nextObject) {
+					// empty directory
+					success &= [zipArchive writeFolderAtPath:fullFilePath withFolderName:fileName withPassword:password];
+				}
+			}
+			if (progressHandler) {
+				complete++;
+				progressHandler(complete, total);
+			}
+		}];
+	}
+	
+	success &= [zipArchive close];
+	return success;
 }
 
 // disabling `init` because designated initializer is `initWithPath:`

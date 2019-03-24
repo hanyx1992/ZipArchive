@@ -107,6 +107,19 @@ typedef NS_ENUM(NSInteger, SSZipArchiveErrorCode) {
                         AES:(BOOL)aes
             progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
 
+// zip dir/file
++ (BOOL)createZipFileAtPath:(NSString *)path
+			   withContents:(NSArray<NSString *> *)contents
+			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
+
++ (BOOL)createZipFileAtPath:(NSString *)path
+			   withContents:(NSArray<NSString *> *)contents
+		keepParentDirectory:(BOOL)keepParentDirectory
+		   compressionLevel:(int)compressionLevel
+				   password:(nullable NSString *)password
+						AES:(BOOL)aes
+			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
+
 - (instancetype)init NS_UNAVAILABLE;
 - (instancetype)initWithPath:(NSString *)path NS_DESIGNATED_INITIALIZER;
 - (BOOL)open;
