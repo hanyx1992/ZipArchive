@@ -708,7 +708,8 @@ BOOL _fileIsSymbolicLink(const unz_file_info *fileInfo);
 + (BOOL)createZipFileAtPath:(NSString *)path
 			   withContents:(NSArray<NSString *> *)contents
 			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler {
-	return [self createZipFileAtPath:path withContents:contents keepParentDirectory:YES compressionLevel:Z_DEFAULT_COMPRESSION password:nil AES:YES progressHandler:progressHandler];
+	BOOL keep = contents.count > 1;
+	return [self createZipFileAtPath:path withContents:contents keepParentDirectory:keep compressionLevel:Z_DEFAULT_COMPRESSION password:nil AES:YES progressHandler:progressHandler];
 }
 
 + (BOOL)createZipFileAtPath:(NSString *)path
