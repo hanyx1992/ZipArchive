@@ -1,3 +1,29 @@
+# 自定义
+
+## 解决文件名乱码问题
+
+解压缩文件名编码采用 UTF-8 编码, 修复解压缩文件名如果包含中文等会出现乱码的问题.
+
+## 支持同时传入目录和文件的功能
+
+不再局限于只能使用以下这两类 Api 要么压缩整个目录, 要么就压缩文件(不带目录层级).
+
+```
++ (BOOL)createZipFileAtPath:(NSString *)path withFilesAtPaths:(NSArray<NSString *> *)paths;
++ (BOOL)createZipFileAtPath:(NSString *)path withContentsOfDirectory:(NSString *)directoryPath;
+```
+
+现在增加了新的 Api, 并且修改原有的 Api, **并不影响所有之前Api的效果**
+
+```
++ (BOOL)createZipFileAtPath:(NSString *)path
+			   withContents:(NSArray<NSString *> *)contents
+			progressHandler:(void(^ _Nullable)(NSUInteger entryNumber, NSUInteger total))progressHandler;
+```
+
+`contents` 可以**同时包含目录和文件**两种类型的完整路径. 对其进行包含目录层级的压缩.
+
+> 以下为原版库的 ReadMe
 
 [![Build Status](https://travis-ci.org/ZipArchive/ZipArchive.svg?branch=master)](https://travis-ci.org/ZipArchive/ZipArchive)
 
